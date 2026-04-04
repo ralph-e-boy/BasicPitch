@@ -10,7 +10,7 @@ Processes a 4-minute song in ~4 seconds on an M1 Mac (parallel CoreML inference 
 - Xcode 15+
 - Swift 5.9+
 
-System frameworks only: AVFoundation, CoreML, Accelerate. The library target has zero third-party dependencies.
+System frameworks only: AVFoundation, CoreML, Accelerate. The `BasicPitch` library target has zero third-party dependencies. The optional `BasicPitchDemucs` target adds [Demucs MLX](https://github.com/kylehowells/demucs-mlx-swift) for stem separation.
 
 ## Installation
 
@@ -23,7 +23,11 @@ dependencies: [
     .package(path: "path/to/BasicPitch")
 ],
 targets: [
-    .target(name: "YourApp", dependencies: ["BasicPitch"])
+    // Audio-to-MIDI only (no third-party dependencies)
+    .target(name: "YourApp", dependencies: ["BasicPitch"]),
+
+    // With Demucs stem separation
+    .target(name: "YourApp", dependencies: ["BasicPitch", "BasicPitchDemucs"]),
 ]
 ```
 
@@ -101,6 +105,47 @@ The two most important parameters are `onsetThreshold` and `frameThreshold`. The
 - **`minimumNoteLengthMS`** — Filters out very short detected notes (default 127.7ms). Lower it for fast passages, raise it to reduce noise.
 - **`minimumFrequency` / `maximumFrequency`** — Hard frequency cutoffs in Hz. Useful if you know the instrument's range (e.g. `minimumFrequency: 82` for guitar low E, `maximumFrequency: 1200` to ignore high harmonics).
 
+### Demucs Stem Separation
+
+The `BasicPitchDemucs` module combines [Demucs](https://github.com/kylehowells/demucs-mlx-swift) stem separation with BasicPitch transcription. Audio is first split into stems (drums, bass, vocals, other), then each stem is transcribed independently — producing cleaner MIDI than transcribing a full mix.
+
+```swift
+import BasicPitchDemucs
+
+let transcriber = try StemTranscriber()
+
+// Separate + transcribe → single multi-track MIDI
+let result = try transcriber.transcribe(fileAt: audioURL)
+try result.write(to: outputURL)
+
+// Access per-stem results
+for (stemName, stemResult) in result.perStem {
+    print("\(stemName): \(stemResult.noteEvents.count) notes")
+}
+```
+
+#### Options
+
+```swift
+var options = StemTranscriptionOptions()
+
+// Only transcribe specific stems
+options.stems = ["vocals", "bass"]
+
+// Output separate MIDI files instead of one multi-track file
+options.outputMode = .separateFiles
+
+// All BasicPitch options are available
+options.basicPitchOptions.onsetThreshold = 0.3
+
+let result = try transcriber.transcribe(fileAt: audioURL, options: options) { stage in
+    // Progress callback for both separation and transcription
+    print(stage)
+}
+```
+
+Each stem is assigned a GM MIDI channel and program: drums on channel 10 (percussion), bass on channel 1 (Acoustic Bass), vocals on channel 2 (Choir Aahs), and other on channel 3 (Electric Piano).
+
 ### Custom Model
 
 ```swift
@@ -115,10 +160,14 @@ let bp = try BasicPitch(configuration: config)
 
 ## CLI
 
-A command-line tool is included for quick conversions:
+Two command-line tools are included:
+
+### basic-pitch-cli
+
+Direct audio-to-MIDI conversion:
 
 ```
-# Build (release, into current directory)
+# Build both CLIs
 make install
 
 # Convert a file
@@ -126,9 +175,6 @@ make install
 
 # Specify output path
 ./basic-pitch-cli song.wav -o output.mid
-
-# Remote URL
-./basic-pitch-cli https://example.com/audio.mp3
 
 # Sensitive detection (clean recordings, solo instruments)
 ./basic-pitch-cli song.m4a --onset-threshold 0.2 --frame-threshold 0.1
@@ -138,18 +184,36 @@ make install
 
 # Restrict to guitar range, no pitch bends, custom tempo
 ./basic-pitch-cli song.wav --min-freq 82 --max-freq 1200 --no-pitch-bends --tempo 140
-
-# Skip overwrite prompt
-./basic-pitch-cli song.wav --yes
 ```
 
-Run `./basic-pitch-cli --help` for all options.
+### basic-pitch-demucs-cli
+
+Stem separation + transcription. Splits audio into stems with Demucs first, then transcribes each stem separately:
+
+```
+# Direct mode (same as basic-pitch-cli)
+./basic-pitch-demucs-cli song.mp3
+
+# Split into stems, output a single multi-track MIDI
+./basic-pitch-demucs-cli song.mp3 --split-stems --multi-track -o output.mid
+
+# Only transcribe vocals and bass
+./basic-pitch-demucs-cli song.mp3 --split-stems --stems vocals,bass
+
+# Separate files per stem (outputs song_drums.mid, song_bass.mid, etc.)
+./basic-pitch-demucs-cli song.mp3 --split-stems
+
+# Custom Demucs model
+./basic-pitch-demucs-cli song.mp3 --split-stems --stem-model htdemucs_ft
+```
+
+Run either CLI with `--help` for all options.
 
 ### Makefile
 
 ```
-make build     # Release build
-make install   # Build + copy binary to current directory
+make build     # Release build (both CLIs)
+make install   # Build + copy binaries to current directory
 make test      # Run test suite
 make clean     # Remove build artifacts
 ```
@@ -194,18 +258,24 @@ Post-processing (note detection, pitch bends, MIDI writing) uses Accelerate (`vD
 ## Architecture
 
 ```
-Sources/BasicPitch/
-├── BasicPitch.swift         Public API — predict(audioURL:options:)
-├── BasicPitchError.swift    Error types
-├── AudioLoader.swift        AVAudioFile + AVAudioConverter → [Float]
-├── AudioWindower.swift      Pad + sliding window with overlap
-├── CoreMLInference.swift    MLModel loading, prediction, parallel batch
-├── OutputStitcher.swift     Overlap removal + concatenation
-├── NoteCreation.swift       Onset detection, note tracking, melodia trick
-├── PitchBend.swift          Contour analysis → MIDI pitch bends
-├── MIDIWriter.swift         Standard MIDI File format writer
-├── Constants.swift          Audio/model constants (sample rate, FFT hop, etc.)
-└── Matrix.swift             Row-major 2D array with vDSP operations
+Sources/BasicPitch/                   Core library (no third-party dependencies)
+├── BasicPitch.swift                  Public API — predict(audioURL:options:)
+├── BasicPitchError.swift             Error types
+├── AudioLoader.swift                 AVAudioFile + AVAudioConverter → [Float]
+├── AudioWindower.swift               Pad + sliding window with overlap
+├── CoreMLInference.swift             MLModel loading, prediction, parallel batch
+├── OutputStitcher.swift              Overlap removal + concatenation
+├── NoteCreation.swift                Onset detection, note tracking, melodia trick
+├── PitchBend.swift                   Contour analysis → MIDI pitch bends
+├── MIDIWriter.swift                  Standard MIDI File format writer
+├── Constants.swift                   Audio/model constants (sample rate, FFT hop, etc.)
+└── Matrix.swift                      Row-major 2D array with vDSP operations
+
+Sources/BasicPitchDemucs/             Demucs integration
+└── StemTranscriber.swift             Stem separation → per-stem transcription
+
+Sources/BasicPitchDemucsCLI/          CLI with stem separation support
+└── BasicPitchDemucsCLI.swift         ArgumentParser CLI
 ```
 
 ## License
