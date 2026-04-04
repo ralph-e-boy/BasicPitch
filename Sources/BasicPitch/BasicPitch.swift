@@ -65,10 +65,28 @@ public final class BasicPitch: @unchecked Sendable {
         self.inference = try CoreMLInference(modelURL: modelURL, configuration: configuration)
     }
 
+    /// Run the full pipeline from raw audio samples.
+    /// Samples are channel-major `[Float]` (e.g. from Demucs output).
+    /// Automatically resamples to 22050 Hz mono.
+    public func predict(
+        audioSamples: [Float],
+        channels: Int = 1,
+        sampleRate: Int,
+        options: BasicPitchOptions = BasicPitchOptions()
+    ) throws -> BasicPitchResult {
+        let audio = try AudioLoader.resampleToMono(audioSamples, channels: channels, sampleRate: sampleRate)
+        return try predictFromMono22050(audio: audio, options: options)
+    }
+
     /// Run the full audio-to-MIDI pipeline synchronously.
     public func predict(audioURL: URL, options: BasicPitchOptions = BasicPitchOptions()) throws -> BasicPitchResult {
         // 1. Load and window audio
         let audio = try AudioLoader.loadAudio(from: audioURL)
+        return try predictFromMono22050(audio: audio, options: options)
+    }
+
+    /// Internal: run pipeline on mono 22050Hz audio.
+    private func predictFromMono22050(audio: [Float], options: BasicPitchOptions) throws -> BasicPitchResult {
         let audioWindows = AudioWindower.window(audio: audio)
 
         // 2. Run inference — parallel across windows
@@ -135,6 +153,18 @@ public final class BasicPitch: @unchecked Sendable {
     public func predict(audioURL: URL, options: BasicPitchOptions = BasicPitchOptions()) async throws -> BasicPitchResult {
         try await Task.detached(priority: .userInitiated) {
             try self.predict(audioURL: audioURL, options: options)
+        }.value
+    }
+
+    /// Run the full pipeline from raw audio samples asynchronously.
+    public func predict(
+        audioSamples: [Float],
+        channels: Int = 1,
+        sampleRate: Int,
+        options: BasicPitchOptions = BasicPitchOptions()
+    ) async throws -> BasicPitchResult {
+        try await Task.detached(priority: .userInitiated) {
+            try self.predict(audioSamples: audioSamples, channels: channels, sampleRate: sampleRate, options: options)
         }.value
     }
 }

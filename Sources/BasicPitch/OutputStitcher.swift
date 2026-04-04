@@ -43,7 +43,7 @@ public enum OutputStitcher {
                     let framesToCopy = min(readEnd - readStart, totalCount - writeOffset)
                     guard framesToCopy > 0 else { break }
 
-                    m.data.withUnsafeBufferPointer { src in
+                    _ = m.data.withUnsafeBufferPointer { src in
                         memcpy(dst.baseAddress!.advanced(by: writeOffset),
                                src.baseAddress!.advanced(by: readStart),
                                framesToCopy * MemoryLayout<Float>.size)

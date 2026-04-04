@@ -13,7 +13,7 @@ public struct WindowPrediction: Sendable {
 
 public final class CoreMLInference: @unchecked Sendable {
     private let model: MLModel
-    private var modelURL: URL
+    private let modelURL: URL
     private let config: MLModelConfiguration
 
     public init(modelURL: URL, configuration: MLModelConfiguration? = nil) throws {
@@ -23,18 +23,23 @@ public final class CoreMLInference: @unchecked Sendable {
             return c
         }()
         self.config = config
-        self.modelURL = modelURL
+
+        let resolvedModel: MLModel
+        let resolvedURL: URL
         do {
-            self.model = try MLModel(contentsOf: modelURL, configuration: config)
+            resolvedModel = try MLModel(contentsOf: modelURL, configuration: config)
+            resolvedURL = modelURL
         } catch {
             do {
                 let compiledURL = try MLModel.compileModel(at: modelURL)
-                self.model = try MLModel(contentsOf: compiledURL, configuration: config)
-                self.modelURL = compiledURL
+                resolvedModel = try MLModel(contentsOf: compiledURL, configuration: config)
+                resolvedURL = compiledURL
             } catch let compileError {
                 throw BasicPitchError.modelLoadFailed(compileError)
             }
         }
+        self.model = resolvedModel
+        self.modelURL = resolvedURL
     }
 
     /// Load model from the SPM bundle resource.
@@ -91,7 +96,10 @@ public final class CoreMLInference: @unchecked Sendable {
         // Results array and error tracking
         let results = UnsafeMutableBufferPointer<WindowPrediction?>.allocate(capacity: count)
         results.initialize(repeating: nil)
-        defer { results.deallocate() }
+        defer {
+            results.deinitialize()
+            results.deallocate()
+        }
 
         var firstError: Error?
         let errorLock = NSLock()
@@ -176,7 +184,7 @@ public final class CoreMLInference: @unchecked Sendable {
         let strides = multiArray.strides.map { $0.intValue }
         let totalCount = rows * cols
         var data = [Float](repeating: 0, count: totalCount)
-        let srcPtr = multiArray.dataPointer.bindMemory(to: Float.self, capacity: strides[0])
+        let srcPtr = multiArray.dataPointer.bindMemory(to: Float.self, capacity: multiArray.count)
 
         data.withUnsafeMutableBufferPointer { dst in
             if strides[2] == 1 {
@@ -186,10 +194,13 @@ public final class CoreMLInference: @unchecked Sendable {
                            cols * MemoryLayout<Float>.size)
                 }
             } else {
+                let stride = strides[2]
                 for r in 0..<rows {
-                    cblas_scopy(Int32(cols),
-                               srcPtr.advanced(by: r * strides[1]), Int32(strides[2]),
-                               dst.baseAddress!.advanced(by: r * cols), 1)
+                    let src = srcPtr.advanced(by: r * strides[1])
+                    let dstRow = dst.baseAddress!.advanced(by: r * cols)
+                    for c in 0..<cols {
+                        dstRow[c] = src[c * stride]
+                    }
                 }
             }
         }

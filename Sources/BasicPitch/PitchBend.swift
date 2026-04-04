@@ -28,14 +28,20 @@ public enum PitchBend {
         return 12.0 * Double(Constants.contoursBinsPerSemitone) * log2(pitchHz / Constants.annotationsBaseFrequency)
     }
 
+    private static let defaultNBinsTolerance = 25
+    private static let defaultWindowLength = defaultNBinsTolerance * 2 + 1 // 51
+    private static let cachedGaussianFloat: [Float] = gaussianWindow(length: defaultWindowLength, std: 5.0).map { Float($0) }
+
     /// Port of `get_pitch_bends` from note_creation.py.
     public static func getPitchBends(
         contours: Matrix,
         noteEvents: [NoteEvent],
         nBinsTolerance: Int = 25
     ) -> [NoteEventWithBend] {
-        let windowLength = nBinsTolerance * 2 + 1 // 51
-        let freqGaussian = gaussianWindow(length: windowLength, std: 5.0)
+        let windowLength = nBinsTolerance * 2 + 1
+        let freqGaussian: [Float] = (nBinsTolerance == defaultNBinsTolerance)
+            ? cachedGaussianFloat
+            : gaussianWindow(length: windowLength, std: 5.0).map { Float($0) }
 
         return noteEvents.map { note in
             let freqIdx = Int(round(midiPitchToContourBin(note.midiPitch)))
@@ -62,7 +68,6 @@ public enum PitchBend {
             let subRows = endFrame - startFrame
             let subCols = freqEndIdx - freqStartIdx
             var bends = [Int](repeating: 0, count: subRows)
-            let gaussFloat = gaussSlice.map { Float($0) }
 
             contours.data.withUnsafeBufferPointer { contourBuf in
                 var weighted = [Float](repeating: 0, count: subCols)
@@ -70,7 +75,7 @@ public enum PitchBend {
                     let rowBase = (startFrame + r) * contours.cols + freqStartIdx
                     // Multiply row slice by Gaussian window
                     vDSP_vmul(contourBuf.baseAddress!.advanced(by: rowBase), 1,
-                              gaussFloat, 1,
+                              gaussSlice, 1,
                               &weighted, 1,
                               vDSP_Length(subCols))
                     // Find argmax

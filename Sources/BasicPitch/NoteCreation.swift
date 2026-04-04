@@ -107,8 +107,8 @@ public enum NoteCreation {
 
         // Melodia trick
         if melodiaTrick {
-            while remainingEnergy.maxValue() > frameThresh {
-                let (iMid, freqIdx) = remainingEnergy.argmax()
+            var (iMid, freqIdx) = remainingEnergy.argmax()
+            while remainingEnergy[iMid, freqIdx] > frameThresh {
                 remainingEnergy[iMid, freqIdx] = 0
 
                 // Forward pass
@@ -151,7 +151,10 @@ public enum NoteCreation {
                 }
                 let iStart = iBwd + 1 + kBwd
 
-                if iEnd - iStart <= minNoteLen { continue }
+                if iEnd - iStart <= minNoteLen {
+                    (iMid, freqIdx) = remainingEnergy.argmax()
+                    continue
+                }
 
                 let amplitude = frames.meanOfColumn(freqIdx, fromRow: iStart, toRow: iEnd)
                 noteEvents.append(NoteEvent(
@@ -160,6 +163,7 @@ public enum NoteCreation {
                     midiPitch: freqIdx + Constants.midiOffset,
                     amplitude: amplitude
                 ))
+                (iMid, freqIdx) = remainingEnergy.argmax()
             }
         }
 
@@ -254,7 +258,9 @@ public enum NoteCreation {
         vDSP.clip(frameDiff, to: 0...Float.greatestFiniteMagnitude, result: &frameDiff)
 
         // Zero first nDiff rows
-        memset(&frameDiff, 0, nDiff * cols * MemoryLayout<Float>.size)
+        frameDiff.withUnsafeMutableBufferPointer { buf in
+            _ = memset(buf.baseAddress!, 0, nDiff * cols * MemoryLayout<Float>.size)
+        }
 
         // Rescale to match max of onsets
         let maxOnsets = vDSP.maximum(onsets.data)

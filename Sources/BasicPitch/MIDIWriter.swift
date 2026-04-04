@@ -31,6 +31,92 @@ public enum MIDIWriter {
         }
     }
 
+    /// MIDI channel and GM program assignments for common stem names.
+    public static let stemChannelMap: [String: (channel: UInt8, program: UInt8?)] = [
+        "drums":  (9, nil),   // Channel 10 (0-indexed 9) = GM percussion, no program change
+        "bass":   (0, 32),    // Acoustic Bass
+        "vocals": (1, 52),    // Choir Aahs
+        "other":  (2, 4),     // Electric Piano 1
+        "guitar": (3, 25),    // Acoustic Guitar (Nylon)
+        "piano":  (4, 0),     // Acoustic Grand Piano
+    ]
+
+    /// Convert per-stem note events into a single multi-track MIDI file.
+    /// Each stem gets its own named track on a dedicated MIDI channel.
+    public static func stemEventsToMIDI(
+        stemEvents: [(stemName: String, events: [NoteEventWithTime])],
+        multiplePitchBends: Bool = false,
+        midiTempo: Float = 120
+    ) -> Data {
+        let ticksPerSecond = Double(midiTempo) / 60.0 * Double(ticksPerQuarterNote)
+
+        var allTracks = [[MIDIEvent]]()
+
+        // Track 0: tempo only
+        var tempoTrack = [MIDIEvent]()
+        tempoTrack.append(.tempo(bpm: midiTempo, tick: 0))
+        tempoTrack.append(.endOfTrack(tick: 0))
+        allTracks.append(tempoTrack)
+
+        // Fallback channel counter for unknown stem names
+        var nextFallbackChannel: UInt8 = 5
+
+        for (stemName, events) in stemEvents {
+            var processedEvents = events
+            if !multiplePitchBends {
+                processedEvents = PitchBend.dropOverlappingPitchBends(processedEvents)
+            }
+
+            let mapping = stemChannelMap[stemName]
+            let channel: UInt8
+            if let mapping {
+                channel = mapping.channel
+            } else {
+                channel = nextFallbackChannel
+                nextFallbackChannel = (nextFallbackChannel + 1) % 16
+                if nextFallbackChannel == 9 { nextFallbackChannel = 10 } // skip drum channel
+            }
+
+            var trackEvents = [MIDIEvent]()
+
+            // Track name meta-event
+            trackEvents.append(.trackName(name: stemName, tick: 0))
+
+            // Program change (skip for drums channel 9)
+            if channel != 9 {
+                let program = mapping?.program ?? electricPiano1Program
+                trackEvents.append(.programChange(channel: channel, program: program, tick: 0))
+            }
+
+            for event in processedEvents {
+                let startTick = UInt32(round(event.startTime * ticksPerSecond))
+                let endTick = UInt32(round(event.endTime * ticksPerSecond))
+                let velocity = UInt8(min(127, max(0, Int(round(Float(Constants.midiVelocityScale) * event.amplitude)))))
+                let pitch = UInt8(clamping: event.midiPitch)
+
+                trackEvents.append(.noteOn(channel: channel, pitch: pitch, velocity: velocity, tick: startTick))
+
+                if let bends = event.pitchBends, !bends.isEmpty {
+                    let bendTimes = linspace(start: event.startTime, end: event.endTime, count: bends.count)
+                    for (i, bend) in bends.enumerated() {
+                        var midiTicks = Int(round(Double(bend) * Constants.pitchBendScale / Double(Constants.contoursBinsPerSemitone)))
+                        midiTicks = max(-Constants.nPitchBendTicks, min(Constants.nPitchBendTicks - 1, midiTicks))
+                        let bendTick = UInt32(round(bendTimes[i] * ticksPerSecond))
+                        trackEvents.append(.pitchBend(channel: channel, value: Int16(midiTicks), tick: bendTick))
+                    }
+                }
+
+                trackEvents.append(.noteOff(channel: channel, pitch: pitch, tick: endTick))
+            }
+
+            let lastTick = trackEvents.max(by: { $0.tick < $1.tick })?.tick ?? 0
+            trackEvents.append(.endOfTrack(tick: lastTick))
+            allTracks.append(trackEvents)
+        }
+
+        return buildSMF(format: 1, tracks: allTracks)
+    }
+
     /// Write MIDI data to a file URL.
     public static func write(data: Data, to url: URL) throws {
         do {
@@ -141,6 +227,7 @@ public enum MIDIWriter {
     // MARK: - SMF binary encoding
 
     private enum MIDIEvent {
+        case trackName(name: String, tick: UInt32)
         case tempo(bpm: Float, tick: UInt32)
         case programChange(channel: UInt8, program: UInt8, tick: UInt32)
         case noteOn(channel: UInt8, pitch: UInt8, velocity: UInt8, tick: UInt32)
@@ -150,7 +237,7 @@ public enum MIDIWriter {
 
         var tick: UInt32 {
             switch self {
-            case .tempo(_, let t), .programChange(_, _, let t),
+            case .trackName(_, let t), .tempo(_, let t), .programChange(_, _, let t),
                  .noteOn(_, _, _, let t), .noteOff(_, _, let t),
                  .pitchBend(_, _, let t), .endOfTrack(let t):
                 return t
@@ -194,6 +281,12 @@ public enum MIDIWriter {
             lastTick = event.tick
 
             switch event {
+            case .trackName(let name, _):
+                let bytes = Array(name.utf8)
+                data.append(contentsOf: [0xFF, 0x03])
+                data.append(contentsOf: variableLengthQuantity(UInt32(bytes.count)))
+                data.append(contentsOf: bytes)
+
             case .tempo(let bpm, _):
                 let uspqn = UInt32(round(60_000_000.0 / Double(bpm)))
                 data.append(contentsOf: [0xFF, 0x51, 0x03])
@@ -235,11 +328,12 @@ public enum MIDIWriter {
 
     private static func eventPriority(_ event: MIDIEvent) -> Int {
         switch event {
+        case .trackName: return -1
         case .tempo: return 0
         case .programChange: return 1
-        case .pitchBend: return 2
-        case .noteOn: return 3
-        case .noteOff: return 4
+        case .noteOff: return 2
+        case .pitchBend: return 3
+        case .noteOn: return 4
         case .endOfTrack: return 99
         }
     }

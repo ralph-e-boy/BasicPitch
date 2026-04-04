@@ -1,19 +1,20 @@
-BINARY_NAME = basic-pitch-cli
 BUILD_DIR = .build/release
-INSTALL_DIR = .
 
 .PHONY: build install clean test
 
 build:
-	swift build -c release --product $(BINARY_NAME)
+	swift build -c release --disable-sandbox
+	./scripts/build_mlx_metallib.sh release
 
 install: build
-	cp $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
-	@echo "Installed: $(INSTALL_DIR)/$(BINARY_NAME)"
+	cp $(BUILD_DIR)/basic-pitch-cli .
+	cp $(BUILD_DIR)/basic-pitch-demucs-cli .
+	cp $(BUILD_DIR)/mlx.metallib .
+	@echo "Installed: basic-pitch-cli, basic-pitch-demucs-cli"
 
 test:
 	swift test
 
 clean:
 	swift package clean
-	rm -f $(INSTALL_DIR)/$(BINARY_NAME)
+	rm -f basic-pitch-cli basic-pitch-demucs-cli mlx.metallib
