@@ -15,7 +15,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
-        .package(url: "https://github.com/kylehowells/demucs-mlx-swift.git", branch: "master"),
+        .package(url: "https://github.com/ralph-e-boy/demucs-mlx-swift.git", from: "0.0.1"),
     ],
     targets: [
         .target(

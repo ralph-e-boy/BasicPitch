@@ -1,6 +1,7 @@
 // Copyright 2024 Spotify AB
 // Licensed under the Apache License, Version 2.0
 
+import Accelerate
 import AVFoundation
 import Foundation
 
@@ -33,15 +34,19 @@ public enum AudioLoader {
         if channels == 1 {
             monoSamples = samples
         } else {
+            var scale = 1.0 / Float(channels)
             monoSamples = [Float](unsafeUninitializedCapacity: frameCount) { buffer, count in
-                let scale = 1.0 / Float(channels)
-                for i in 0..<frameCount {
-                    var sum: Float = 0
+                samples.withUnsafeBufferPointer { src in
+                    vDSP_vclr(buffer.baseAddress!, 1, vDSP_Length(frameCount))
                     for ch in 0..<channels {
-                        sum += samples[ch * frameCount + i]
+                        vDSP_vadd(buffer.baseAddress!, 1,
+                                  src.baseAddress!.advanced(by: ch * frameCount), 1,
+                                  buffer.baseAddress!, 1,
+                                  vDSP_Length(frameCount))
                     }
-                    buffer[i] = sum * scale
                 }
+                vDSP_vsmul(buffer.baseAddress!, 1, &scale, buffer.baseAddress!, 1,
+                          vDSP_Length(frameCount))
                 count = frameCount
             }
         }
