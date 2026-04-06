@@ -37,13 +37,12 @@ public struct Matrix: Sendable {
         let newRows = rowRange.count
         let newCols = colRange.count
         var result = [Float](repeating: 0, count: newRows * newCols)
-        for (ri, r) in rowRange.enumerated() {
-            let srcStart = r * cols + colRange.lowerBound
-            let dstStart = ri * newCols
-            result.withUnsafeMutableBufferPointer { dst in
-                data.withUnsafeBufferPointer { src in
-                    dst.baseAddress!.advanced(by: dstStart)
-                        .update(from: src.baseAddress!.advanced(by: srcStart), count: newCols)
+        result.withUnsafeMutableBufferPointer { dst in
+            data.withUnsafeBufferPointer { src in
+                for (ri, r) in rowRange.enumerated() {
+                    let srcStart = src.baseAddress!.advanced(by: r * cols + colRange.lowerBound)
+                    let dstStart = dst.baseAddress!.advanced(by: ri * newCols)
+                    vDSP_mmov(srcStart, dstStart, vDSP_Length(newCols), vDSP_Length(1), 1, vDSP_Length(newCols))
                 }
             }
         }
@@ -113,10 +112,13 @@ public struct Matrix: Sendable {
         }
     }
 
-    /// Zero a column span across a row range using strided memset.
+    /// Zero a column span across a row range using strided vDSP.
     public mutating func zeroColumn(_ col: Int, fromRow: Int, toRow: Int) {
-        for r in fromRow..<toRow {
-            data[r * cols + col] = 0
+        let count = toRow - fromRow
+        guard count > 0 else { return }
+        data.withUnsafeMutableBufferPointer { buf in
+            vDSP_vclr(buf.baseAddress!.advanced(by: fromRow * cols + col),
+                     vDSP_Stride(cols), vDSP_Length(count))
         }
     }
 

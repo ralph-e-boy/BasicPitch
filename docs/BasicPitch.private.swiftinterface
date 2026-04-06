@@ -1,0 +1,186 @@
+// swift-interface-format-version: 1.0
+// swift-compiler-version: Apple Swift version 6.2.4 effective-5.10 (swiftlang-6.2.4.1.4 clang-1700.6.4.2)
+// swift-module-flags: -target arm64-apple-macosx14.0 -enable-objc-interop -enable-library-evolution -swift-version 5 -Onone -module-name BasicPitch -package-name basicpitch
+// swift-module-flags-ignorable: -no-verify-emitted-module-interface -formal-cxx-interoperability-mode=off -interface-compiler-version 6.2.4
+import AVFoundation
+import Accelerate
+import CoreML
+import Foundation
+import Swift
+import _Concurrency
+import _StringProcessing
+import _SwiftConcurrencyShims
+public enum AudioLoader {
+  public static func resampleToMono(_ samples: [Swift.Float], channels: Swift.Int, sampleRate: Swift.Int) throws -> [Swift.Float]
+  public static func loadAudio(from url: Foundation.URL) throws -> [Swift.Float]
+}
+public struct AudioWindows : Swift.Sendable {
+  public let windows: [[Swift.Float]]
+  public let originalLength: Swift.Int
+}
+public enum AudioWindower {
+  public static func window(audio: [Swift.Float]) -> BasicPitch.AudioWindows
+}
+public struct BasicPitchOptions {
+  public var onsetThreshold: Swift.Float
+  public var frameThreshold: Swift.Float
+  public var minimumNoteLengthMS: Swift.Float
+  public var minimumFrequency: Swift.Float?
+  public var maximumFrequency: Swift.Float?
+  public var includePitchBends: Swift.Bool
+  public var multiplePitchBends: Swift.Bool
+  public var melodiaTrick: Swift.Bool
+  public var midiTempo: Swift.Float
+  public var progressHandler: ((Swift.Int, Swift.Int) -> Swift.Void)?
+  #if compiler(>=5.3) && $NonescapableTypes
+  public init(onsetThreshold: Swift.Float = Constants.defaultOnsetThreshold, frameThreshold: Swift.Float = Constants.defaultFrameThreshold, minimumNoteLengthMS: Swift.Float = Constants.defaultMinimumNoteLengthMS, minimumFrequency: Swift.Float? = nil, maximumFrequency: Swift.Float? = nil, includePitchBends: Swift.Bool = true, multiplePitchBends: Swift.Bool = false, melodiaTrick: Swift.Bool = true, midiTempo: Swift.Float = Constants.defaultMidiTempo, progressHandler: ((Swift.Int, Swift.Int) -> Swift.Void)? = nil)
+  #endif
+}
+public struct BasicPitchResult : Swift.Sendable {
+  public let noteEvents: [BasicPitch.NoteEventWithTime]
+  public let midiData: Foundation.Data
+  public func writeMIDI(to url: Foundation.URL) throws
+}
+final public class BasicPitch : @unchecked Swift.Sendable {
+  #if compiler(>=5.3) && $NonescapableTypes
+  public init(configuration: CoreML.MLModelConfiguration? = nil) throws
+  #endif
+  #if compiler(>=5.3) && $NonescapableTypes
+  public init(modelURL: Foundation.URL, configuration: CoreML.MLModelConfiguration? = nil) throws
+  #endif
+  final public func predict(audioSamples: [Swift.Float], channels: Swift.Int = 1, sampleRate: Swift.Int, options: BasicPitch.BasicPitchOptions = BasicPitchOptions()) throws -> BasicPitch.BasicPitchResult
+  final public func predict(audioURL: Foundation.URL, options: BasicPitch.BasicPitchOptions = BasicPitchOptions()) throws -> BasicPitch.BasicPitchResult
+  final public func predict(audioURL: Foundation.URL, options: BasicPitch.BasicPitchOptions = BasicPitchOptions()) async throws -> BasicPitch.BasicPitchResult
+  final public func predict(audioSamples: [Swift.Float], channels: Swift.Int = 1, sampleRate: Swift.Int, options: BasicPitch.BasicPitchOptions = BasicPitchOptions()) async throws -> BasicPitch.BasicPitchResult
+  @objc deinit
+}
+public enum BasicPitchError : Swift.Error, Foundation.LocalizedError {
+  case audioLoadFailed(Foundation.URL, any Swift.Error)
+  case audioConversionFailed(Swift.String)
+  case modelLoadFailed(any Swift.Error)
+  case modelNotFound
+  case inferenceError(any Swift.Error)
+  case invalidAudioFormat(Swift.String)
+  case midiWriteFailed(any Swift.Error)
+  #if compiler(>=5.3) && $NonescapableTypes
+  public var errorDescription: Swift.String? {
+    get
+  }
+  #endif
+}
+public enum Constants {
+  public static let audioSampleRate: Swift.Int
+  public static let fftHop: Swift.Int
+  public static let audioWindowLength: Swift.Int
+  public static let audioNChannels: Swift.Int
+  public static let annotationsFPS: Swift.Int
+  public static let annotNFrames: Swift.Int
+  public static let audioNSamples: Swift.Int
+  public static let semitonesPerOctave: Swift.Int
+  public static let annotationsNSemitones: Swift.Int
+  public static let annotationsBaseFrequency: Swift.Double
+  public static let notesBinsPerSemitone: Swift.Int
+  public static let contoursBinsPerSemitone: Swift.Int
+  public static let nFreqBinsNotes: Swift.Int
+  public static let nFreqBinsContours: Swift.Int
+  public static let midiOffset: Swift.Int
+  public static let nPitchBendTicks: Swift.Int
+  public static let maxFreqIdx: Swift.Int
+  public static let defaultMinNoteLen: Swift.Int
+  public static let energyTolerance: Swift.Int
+  public static let magicAlignmentOffset: Swift.Double
+  public static let midiVelocityScale: Swift.Int
+  public static let pitchBendScale: Swift.Double
+  public static let defaultOnsetThreshold: Swift.Float
+  public static let defaultFrameThreshold: Swift.Float
+  public static let defaultMinimumNoteLengthMS: Swift.Float
+  public static let defaultOverlappingFrames: Swift.Int
+  public static let defaultMidiTempo: Swift.Float
+  public static let overlapLen: Swift.Int
+  public static let hopSize: Swift.Int
+  public static func freqBins(binsPerSemitone: Swift.Int, baseFrequency: Swift.Double, nSemitones: Swift.Int) -> [Swift.Double]
+  public static let freqBinsNotes: [Swift.Double]
+  public static let freqBinsContours: [Swift.Double]
+}
+public struct WindowPrediction : Swift.Sendable {
+  public let notes: BasicPitch.Matrix
+  public let onsets: BasicPitch.Matrix
+  public let contours: BasicPitch.Matrix
+}
+final public class CoreMLInference : @unchecked Swift.Sendable {
+  #if compiler(>=5.3) && $NonescapableTypes
+  public init(modelURL: Foundation.URL, configuration: CoreML.MLModelConfiguration? = nil) throws
+  #endif
+  #if compiler(>=5.3) && $NonescapableTypes
+  convenience public init(configuration: CoreML.MLModelConfiguration? = nil) throws
+  #endif
+  final public func predict(window: [Swift.Float]) throws -> BasicPitch.WindowPrediction
+  #if compiler(>=5.3) && $NonescapableTypes
+  final public func predictBatch(windows: [[Swift.Float]], concurrency: Swift.Int = ProcessInfo.processInfo.activeProcessorCount, progressHandler: ((Swift.Int, Swift.Int) -> Swift.Void)? = nil) throws -> [BasicPitch.WindowPrediction]
+  #endif
+  @objc deinit
+}
+public enum MIDIWriter {
+  public static func noteEventsToMIDI(events: [BasicPitch.NoteEventWithTime], multiplePitchBends: Swift.Bool = false, midiTempo: Swift.Float = 120) -> Foundation.Data
+  public static let stemChannelMap: [Swift.String : (channel: Swift.UInt8, program: Swift.UInt8?)]
+  public static func stemEventsToMIDI(stemEvents: [(stemName: Swift.String, events: [BasicPitch.NoteEventWithTime])], multiplePitchBends: Swift.Bool = false, midiTempo: Swift.Float = 120) -> Foundation.Data
+  public static func write(data: Foundation.Data, to url: Foundation.URL) throws
+}
+public struct Matrix : Swift.Sendable {
+  public var data: [Swift.Float]
+  public let rows: Swift.Int
+  public let cols: Swift.Int
+  public init(rows: Swift.Int, cols: Swift.Int, data: [Swift.Float])
+  public init(rows: Swift.Int, cols: Swift.Int, repeating value: Swift.Float = 0)
+  @inline(__always) public subscript(row: Swift.Int, col: Swift.Int) -> Swift.Float {
+    get
+    set
+  }
+  public func row(_ r: Swift.Int) -> Swift.ArraySlice<Swift.Float>
+  public func submatrix(rowRange: Swift.Range<Swift.Int>, colRange: Swift.Range<Swift.Int>) -> BasicPitch.Matrix
+  public func maxValue() -> Swift.Float
+  public func argmax() -> (row: Swift.Int, col: Swift.Int)
+  public func argmaxPerRow() -> [Swift.Int]
+  public mutating func zeroOutColumns(below: Swift.Int, above: Swift.Int)
+  public mutating func zeroOutRows(below: Swift.Int, above: Swift.Int)
+  public mutating func zeroColumn(_ col: Swift.Int, fromRow: Swift.Int, toRow: Swift.Int)
+  public func meanOfColumn(_ col: Swift.Int, fromRow: Swift.Int, toRow: Swift.Int) -> Swift.Float
+}
+public struct NoteEvent : Swift.Sendable {
+  public let startFrame: Swift.Int
+  public let endFrame: Swift.Int
+  public let midiPitch: Swift.Int
+  public let amplitude: Swift.Float
+}
+public enum NoteCreation {
+  #if compiler(>=5.3) && $NonescapableTypes
+  public static func outputToNotesPolyphonic(frames inputFrames: BasicPitch.Matrix, onsets inputOnsets: BasicPitch.Matrix, onsetThresh: Swift.Float, frameThresh: Swift.Float, minNoteLen: Swift.Int = Constants.defaultMinNoteLen, inferOnsets: Swift.Bool = true, maxFreq: Swift.Float? = nil, minFreq: Swift.Float? = nil, melodiaTrick: Swift.Bool = true, energyTol: Swift.Int = Constants.energyTolerance) -> [BasicPitch.NoteEvent]
+  #endif
+  public static func modelFramesToTime(nFrames: Swift.Int) -> [Swift.Double]
+}
+public struct StitchedOutput : Swift.Sendable {
+  public let notes: BasicPitch.Matrix
+  public let onsets: BasicPitch.Matrix
+  public let contours: BasicPitch.Matrix
+}
+public enum OutputStitcher {
+  public static func stitch(predictions: [BasicPitch.WindowPrediction], originalLength: Swift.Int) -> BasicPitch.StitchedOutput
+}
+public struct NoteEventWithBend : Swift.Sendable {
+  public let startFrame: Swift.Int
+  public let endFrame: Swift.Int
+  public let midiPitch: Swift.Int
+  public let amplitude: Swift.Float
+  public let pitchBends: [Swift.Int]?
+}
+public struct NoteEventWithTime : Swift.Sendable {
+  public let startTime: Swift.Double
+  public let endTime: Swift.Double
+  public let midiPitch: Swift.Int
+  public let amplitude: Swift.Float
+  public let pitchBends: [Swift.Int]?
+}
+public enum PitchBend {
+  public static func getPitchBends(contours: BasicPitch.Matrix, noteEvents: [BasicPitch.NoteEvent], nBinsTolerance: Swift.Int = 25) -> [BasicPitch.NoteEventWithBend]
+  public static func dropOverlappingPitchBends(_ events: [BasicPitch.NoteEventWithTime]) -> [BasicPitch.NoteEventWithTime]
+}

@@ -194,12 +194,12 @@ public final class CoreMLInference: @unchecked Sendable {
                            cols * MemoryLayout<Float>.size)
                 }
             } else {
-                let stride = strides[2]
+                let srcStride = strides[2]
                 for r in 0..<rows {
                     let src = srcPtr.advanced(by: r * strides[1])
                     let dstRow = dst.baseAddress!.advanced(by: r * cols)
                     for c in 0..<cols {
-                        dstRow[c] = src[c * stride]
+                        dstRow[c] = src[c * srcStride]
                     }
                 }
             }
