@@ -45,6 +45,12 @@ End-to-end test driver for the full Demucs + BasicPitch pipeline:
 
 Auto-builds via `make install` if the binary or `mlx.metallib` is missing.
 
+## Demo App (Stemroll)
+
+![Stemroll demo app](../screen.png)
+
+Stemroll is a native macOS demo app to validate and explore the BasicPitch Swift package. Load audio files, tweak transcription parameters (thresholds, frequency ranges, pitch bends), and see results in real-time. Optional stem separation (drums, bass, vocals, other) for per-stem transcription.
+
 ## SPM Targets
 
 | Target | Dependencies | Description |
